@@ -1,0 +1,14 @@
+.vscode/
+LD-PWB-SMF/results/
+LD-PWB-SMF/*fsp
+LD-PWB-SMF/*lsf
+LNOI-PWB-SMF/results/
+LNOI-PWB-SMF/*fsp
+LNOI-PWB-SMF/*lsf
+PD-PWB-SMF/results/
+PD-PWB-SMF/*fsp
+PD-PWB-SMF/*lsf
+SMF-PWB-SMF/
+Taper/
+U-Turn/
+database.mdf
