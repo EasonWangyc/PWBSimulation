@@ -65,6 +65,8 @@ D:/simulation/Simulation Project
 - 修改应尽量限制在用户提到的具体场景目录和脚本内。
 - 若要增强可复现性，优先参数化路径；不要在未经明确同意的情况下重组目录结构。
 - 保持物理单位一致。代码中的几何参数大多使用 SI 单位，通常以微米数值乘以 `1e-6` 表示。
+- `PD-PWB-SMF` 中 `_1/_2` 与 `_3` 的弯曲半径含义不同：`_1/_2` 的 `R` 是固定 90 度圆弧半径；`_3` 使用分段 Bezier 复杂中心线，不存在全局固定弯曲半径，应关注沿中心线变化的局部曲率半径 `rho(s)=1/kappa(s)`，尤其是最小曲率半径 `min(rho)`。
+- 在 `_3` 当前实现中，`R` 不直接控制中心线曲率，只用于 `generate_radius_profile_3` 中估算输出 taper 区域长度；复杂路径形状主要由 `L`、`h`、`l1`、`bend_lift`、`arch_position`、`bend_shape`、`drop_shape` 和 `complex_segments` 控制。
 - 谨慎处理 `T_total` 的符号和 loss 换算。现有分析使用 `loss = -10 * log10(abs(-1.0 * T_total))`；修改公式前需确认物理约定。
 - 新增分析代码时，输出文件应放入对应场景目录的 `results/` 子目录。
 - 对 notebook 不做大规模重写。若逻辑需要复用，优先抽取到 `.py` 文件。
