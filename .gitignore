@@ -11,6 +11,7 @@ PD-PWB-SMF/results/
 PD-PWB-SMF/*fsp
 PD-PWB-SMF/*lsf
 PD-PWB-SMF/__pycache__/
+PD-PWB-SMF/*.log
 SMF-PWB-SMF/
 Taper/
 U-Turn/
