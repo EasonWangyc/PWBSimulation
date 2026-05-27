@@ -1,4 +1,6 @@
 .vscode/
+__pycache__/
+config/__pycache__/
 LD-PWB-SMF/results/
 LD-PWB-SMF/*fsp
 LD-PWB-SMF/*lsf
@@ -13,6 +15,3 @@ PD-PWB-SMF/*lsf
 PD-PWB-SMF/__pycache__/
 PD-PWB-SMF/*.log
 SMF-PWB-SMF/
-Taper/
-U-Turn/
-database.mdf
