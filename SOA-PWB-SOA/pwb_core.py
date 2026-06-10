@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
-from sim_config import MATERIAL_DB, SOA_DIR, SOA_RESULTS_DIR
+from sim_config import MATERIAL_DB, SOA_RESULTS_DIR
 
 PICTURES_DIR = SOA_RESULTS_DIR / "Pictures"
 
