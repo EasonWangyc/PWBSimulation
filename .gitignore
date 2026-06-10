@@ -16,4 +16,9 @@ PD-PWB-SMF/__pycache__/
 PD-PWB-SMF/**/*.log
 PD-PWB-SMF/**/temp_*/
 *.h5
+SOA-PWB-SOA/results/
+SOA-PWB-SOA/*.fsp
+SOA-PWB-SOA/*.lsf
+SOA-PWB-SOA/*.log
+SOA-PWB-SOA/__pycache__/
 SMF-PWB-SMF/
