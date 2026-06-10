@@ -6,48 +6,70 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 PWB（光子引线键合）仿真项目，通过 Python 调用 Lumerical/Ansys FDTD API（`lumapi`）。按耦合场景分目录：`PD-PWB-SMF/`、`LD-PWB-SMF/`、`LNOI-PWB-SMF/`，每个目录有各自的 `pwb_core.py`、运行脚本和结果。详见 `AGENTS.md`。
 
+## 运行环境
+
+Lumerical 安装于 `D:\Program Files\Lumerical\`，API 路径为 `D:\Program Files\Lumerical\api\python\`。**仿真脚本必须使用 Lumerical 自带的 Python 3.9.9**，因为系统 Python 缺少 numpy/matplotlib 且可能与 lumapi 不兼容：
+
+```powershell
+D:\Program Files\Lumerical\python\python.exe PD-PWB-SMF\scripts\run_single.py
+```
+
+可用环境变量覆盖配置（无需修改代码）：
+- `SIM_PROJECT_ROOT` — 项目根目录
+- `LUMERICAL_API_PATH` — Lumerical Python API 路径
+- `SIM_MATERIAL_DB` — 材料库路径
+
 ## 常用命令
 
-```bash
+```powershell
+# 用 Lumerical 自带 Python 运行所有脚本
+$env:PY = "D:\Program Files\Lumerical\python\python.exe"
+
 # 语法检查（不需要 Lumerical）
-python -m py_compile sim_config.py
-python -m py_compile PD-PWB-SMF/pwb_core.py
+python -m py_compile config\sim_config.py
+python -m py_compile PD-PWB-SMF\pwb_core.py
 
-# 纯几何单元测试（不需要 Lumerical）
-python PD-PWB-SMF/test_complex_geometry.py
-
-# 后处理分析（不需要 Lumerical）
-python PD-PWB-SMF/analyze_results.py
+# 纯几何单元测试 / 分析（不需要 Lumerical）
+python PD-PWB-SMF\tests\test_complex_geometry.py
+python PD-PWB-SMF\analysis\analyze_results.py
+python PD-PWB-SMF\analysis\analyze_curvature.py
 
 # 仅构建结构，不运行 FDTD（需要 Lumerical）
-python PD-PWB-SMF/test_setup.py
-python LD-PWB-SMF/test_setup.py
-python LNOI-PWB-SMF/test_setup.py
+& $env:PY PD-PWB-SMF\tests\test_setup.py
+& $env:PY LD-PWB-SMF\test_setup.py
+& $env:PY LNOI-PWB-SMF\test_setup.py
+
+# 复杂路径结构测试（需要 Lumerical）
+& $env:PY PD-PWB-SMF\tests\test_setup_complex.py
 
 # 单次 FDTD 仿真（需要 Lumerical，耗时长）
-python PD-PWB-SMF/run_single.py
+& $env:PY PD-PWB-SMF\scripts\run_single.py
 
 # 参数扫描（需要 Lumerical，耗时极长——必须先征得同意）
-python PD-PWB-SMF/sweep_r_R.py
-python PD-PWB-SMF/sweep_h_R.py
-python LNOI-PWB-SMF/sweep_h1_h2_w1_w2.py
+& $env:PY PD-PWB-SMF\scripts\sweep_r_R.py
+& $env:PY PD-PWB-SMF\scripts\sweep_h_R.py
+& $env:PY PD-PWB-SMF\scripts\baseline_2.py
+& $env:PY PD-PWB-SMF\scripts\sweep_bend_shape.py
+& $env:PY LNOI-PWB-SMF\sweep_h1_h2_w1_w2.py
 ```
 
 ## 架构要点
 
 ### 路径体系
 
-所有路径通过 `sim_config.py` 统一管理，脚本从中导入常量，不硬编码路径。三个环境变量可覆盖默认值：`SIM_PROJECT_ROOT`、`LUMERICAL_API_PATH`、`SIM_MATERIAL_DB`。
+所有路径通过 `config/sim_config.py` 统一管理，脚本从中导入常量，不硬编码路径。
 
 ### 三个场景的统一结构
 
 每个场景目录（`PD-PWB-SMF/`、`LD-PWB-SMF/`、`LNOI-PWB-SMF/`）结构一致：
 
-| 文件 | 作用 |
+| 位置 | 作用 |
 |------|------|
 | `pwb_core.py` | 参数类 + 几何生成 + FDTD 设置 + 结果读取 + 可视化 |
-| `test_setup.py` | 仅构建并保存 `.fsp`，不运行仿真 |
-| `run_single.py` | 一次完整仿真 |
+| `scripts/` | 仿真运行脚本（单次 + 参数扫描） |
+| `tests/` | 仅构建并保存 `.fsp`，不运行仿真；纯几何单元测试 |
+| `analysis/` | 后处理分析工具，不需要 Lumerical |
+| `results/` | 仿真结果输出 |
 | `parameter.md` | 该场景的物理参数说明 |
 | `*.ipynb` | 历史探索记录，不要大改，可复用逻辑应抽取到 `.py` |
 

@@ -8,7 +8,7 @@ import os
 import sys
 from pathlib import Path
 
-sys.path.append(str(Path(__file__).resolve().parents[1]))
+sys.path.append(str(Path(__file__).resolve().parents[2]))
 from sim_config import PD_DIR, PD_RESULTS_DIR, add_lumerical_api_path
 
 add_lumerical_api_path()

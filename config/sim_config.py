@@ -8,11 +8,13 @@ from pathlib import Path
 PROJECT_ROOT = Path(os.environ.get("SIM_PROJECT_ROOT", Path(__file__).resolve().parent.parent)).resolve()
 
 LUMERICAL_API_PATH = Path(
-    os.environ.get("LUMERICAL_API_PATH", r"D:\Program Files\Lumerical\v241\api\python")
+    os.environ.get("LUMERICAL_API_PATH", r"D:\Program Files\Lumerical\api\python")
 )
 MATERIAL_DB = Path(os.environ.get("SIM_MATERIAL_DB", PROJECT_ROOT / "config" / "database.mdf"))
 
 PD_DIR = PROJECT_ROOT / "PD-PWB-SMF"
+if str(PD_DIR) not in sys.path:
+    sys.path.insert(0, str(PD_DIR))
 LD_DIR = PROJECT_ROOT / "LD-PWB-SMF"
 LNOI_DIR = PROJECT_ROOT / "LNOI-PWB-SMF"
 

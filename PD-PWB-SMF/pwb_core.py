@@ -11,7 +11,6 @@ import numpy as np
 import matplotlib.ticker as ticker
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
-import pandas as pd
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from sim_config import MATERIAL_DB, PD_RESULTS_DIR, PD_SMF_FSP
@@ -464,7 +463,7 @@ def setup_fdtd_simulation_1(fdtd, params):
     margin = 6e-6
 
     fdtd.setresource("FDTD", "GPU", True)
-    fdtd.addfdtd()
+    fdtd.select("FDTD")
     fdtd.set("dimension", "3D")
     fdtd.set("x min", x_min)
     fdtd.set("x max", x_max + margin)
@@ -532,7 +531,7 @@ def setup_fdtd_simulation_2(fdtd, params):
     margin = 10e-6
 
     fdtd.setresource("FDTD", "GPU", True)
-    fdtd.addfdtd()
+    fdtd.select("FDTD")
     fdtd.set("dimension", "3D")
     fdtd.set("x min", x_min - margin)
     fdtd.set("x max", x_max + margin)
@@ -588,20 +587,20 @@ def setup_fdtd_simulation_3(fdtd, params):
     radii = generate_radius_profile_3(params, path)
     max_radius = float(np.max(radii)) if len(radii) else params.r2
     margin = max(10e-6, 3 * max_radius)
+    extra_pad = 10e-6  # keeps monitors away from PML boundaries
 
     x_min, x_max = float(np.min(path[:, 0])), float(np.max(path[:, 0]))
     z_min, z_max = float(np.min(path[:, 2])), float(np.max(path[:, 2]))
 
     fdtd.setresource("FDTD", "GPU", True)
-    fdtd.addfdtd()
+    fdtd.select("FDTD")
     fdtd.set("dimension", "3D")
-    fdtd.set("x min", x_min - margin)
-    fdtd.set("x max", x_max + margin)
-    fdtd.set("y min", -margin)
-    fdtd.set("y max", margin)
-    fdtd.set("z min", z_min - margin)
-    fdtd.set("z max", z_max + margin)
-    fdtd.set("express mode", True)
+    fdtd.set("x min", x_min - margin - extra_pad)
+    fdtd.set("x max", x_max + margin + extra_pad)
+    fdtd.set("y min", -(margin + extra_pad))
+    fdtd.set("y max", margin + extra_pad)
+    fdtd.set("z min", z_min - margin - extra_pad)
+    fdtd.set("z max", z_max + margin + extra_pad)
     fdtd.set("x min bc", "PML")
     fdtd.set("x max bc", "PML")
     fdtd.set("y min bc", "PML")
@@ -786,6 +785,8 @@ def plot_Ttotal_loss_heatmap_rR(data_file, output_dir=None, cmap='viridis_r', ep
     读取 r, R, T_total 数据文件，计算 loss = -10*log10(|T_total|) 并绘制热力图。
     返回 (loss_matrix, r_vals, R_vals)
     """
+    import pandas as pd
+
     for enc in ('utf-8', 'gbk', 'latin-1'):
         try:
             df = pd.read_csv(data_file, sep=r'\s*\t\s*', engine='python', encoding=enc)
@@ -848,3 +849,292 @@ def plot_Ttotal_loss_heatmap_rR(data_file, output_dir=None, cmap='viridis_r', ep
 
     print("Saved heatmap to:", out_path)
     return loss_matrix, r_vals, R_vals
+
+
+# ---------------------------------------------------------------------------
+# Bend-only functions — no SMF.fsp, no taper1, just the bending section
+# ---------------------------------------------------------------------------
+
+def generate_pwb_bend_path(params):
+    """Generate the bending-only centerline with straight input/output leads.
+
+    Input straight  (10 μm):  (l1 - input_straight, 0, 0)  →  (l1, 0, 0)
+    Bezier bend:              (l1, 0, 0)  →  (L, 0, -h)
+    Output straight (5 μm):   (L, 0, -h)  →  (L, 0, -h - output_straight)
+
+    The straight input waveguide gives the mode source a proper cross-section
+    for modal decomposition. The straight output lets the field settle before
+    the transmission monitor.
+    """
+    INPUT_STRAIGHT = 10e-6
+    OUTPUT_STRAIGHT = 5e-6
+
+    dx = params.L - params.l1
+    if dx <= 0:
+        raise ValueError("params.L must be greater than params.l1")
+
+    total_bend_points = max(8, int(params.complex_segments) + 1)
+
+    # --- input straight waveguide (horizontal, +x direction) ---
+    n_input = max(5, int(total_bend_points * INPUT_STRAIGHT / dx))
+    x_input = np.linspace(params.l1 - INPUT_STRAIGHT, params.l1, n_input)
+    input_path = np.column_stack([x_input, np.zeros(n_input), np.zeros(n_input)])
+
+    # --- Bezier bend ---
+    lift = float(params.bend_lift)
+    arch_position = np.clip(float(params.arch_position), 0.05, 0.90)
+    bend_shape = np.clip(float(params.bend_shape), 0.05, 0.95)
+    drop_shape = np.clip(float(params.drop_shape), 0.05, 0.95)
+
+    start = np.array([params.l1, 0.0, 0.0])
+    peak = np.array([params.l1 + arch_position * dx, 0.0, lift * params.h])
+    end = np.array([params.L, 0.0, -params.h])
+
+    arch_dx = peak[0] - start[0]
+    drop_dx = end[0] - peak[0]
+    drop_dz = peak[2] - end[2]
+
+    arch_points = max(4, int(total_bend_points * arch_position))
+    drop_points = max(4, total_bend_points - arch_points + 1)
+
+    arch_controls = [
+        start,
+        start + np.array([bend_shape * arch_dx, 0.0, 0.0]),
+        peak - np.array([bend_shape * arch_dx, 0.0, 0.0]),
+        peak,
+    ]
+    drop_controls = [
+        peak,
+        peak + np.array([drop_shape * drop_dx, 0.0, 0.0]),
+        end + np.array([0.0, 0.0, drop_shape * drop_dz]),
+        end,
+    ]
+
+    arch_t = np.linspace(0, 1, arch_points)
+    drop_t = np.linspace(0, 1, drop_points)
+    arch = cubic_bezier(arch_controls, arch_t)
+    drop = cubic_bezier(drop_controls, drop_t)
+
+    # --- output straight waveguide (vertical, -z direction) ---
+    n_output = max(5, int(total_bend_points * OUTPUT_STRAIGHT / dx))
+    z_output = np.linspace(-params.h, -params.h - OUTPUT_STRAIGHT, n_output)
+    output_path = np.column_stack([
+        np.full(n_output, params.L),
+        np.zeros(n_output),
+        z_output,
+    ])
+
+    return np.vstack((input_path, arch, drop, output_path))
+
+
+def generate_pwb_bend_path_2(params):
+    """Generate the _2 bend-only centerline: horizontal + 90° arc + vertical.
+
+    Input straight:   (l1 - INPUT, 0, 0)  →  (L - R, 0, 0)
+    90° quarter-arc:  (L - R, 0, 0)  →  (L, -R)     [radius = R]
+    Output straight:  (L, -R)  →  (L, -h - OUTPUT_STRAIGHT)
+
+    The centreline is identical to the classical _2 geometry (arc + taper2)
+    but prepended with a short straight input lead for clean mode injection.
+    """
+    INPUT_STRAIGHT = 10e-6
+    OUTPUT_STRAIGHT = 5e-6
+
+    R = params.R
+    l = params.L - params.l1 - R          # horizontal run before arc
+    l2 = params.h - R                     # vertical run after arc (taper2)
+
+    if l < 0:
+        raise ValueError(
+            f"R={R * 1e6:.1f} μm exceeds L-l1={params.L - params.l1:.1f} μm"
+        )
+
+    total_points = max(8, int(params.complex_segments) + 1)
+
+    # --- input straight: (l1 - INPUT, 0, 0) → (L - R, 0, 0) ---
+    n_input = max(5, int(total_points * (INPUT_STRAIGHT + l) / (params.L - params.l1)))
+    x_input = np.linspace(params.l1 - INPUT_STRAIGHT, params.L - R, n_input)
+    input_path = np.column_stack([x_input, np.zeros(n_input), np.zeros(n_input)])
+
+    # --- 90° quarter-circle arc ---
+    arc_len = (np.pi / 2) * R
+    n_arc = max(12, int(total_points * arc_len / (arc_len + l + l2 + INPUT_STRAIGHT + OUTPUT_STRAIGHT)))
+    n_arc = max(n_arc, int(total_points * R / (params.L - params.l1)))
+    t = np.linspace(0, np.pi / 2, n_arc)
+    center_x = params.L - R
+    center_z = -R
+    x_arc = center_x + R * np.sin(t)
+    z_arc = center_z + R * np.cos(t)
+    arc_path = np.column_stack([x_arc, np.zeros(n_arc), z_arc])
+
+    # --- output straight (vertical, -z) ---
+    output_len = l2 + OUTPUT_STRAIGHT
+    n_output = max(5, int(total_points * output_len / (params.L - params.l1)))
+    z_output = np.linspace(-R, -R - output_len, n_output)
+    output_path = np.column_stack([
+        np.full(n_output, params.L),
+        np.zeros(n_output),
+        z_output,
+    ])
+
+    return np.vstack((input_path, arc_path, output_path))
+
+
+def generate_radius_profile_bend(params, path):
+    """Smoothly taper core radius r → r2 over the second half of the path.
+
+    - s ∈ [0,    0.5):  radius = r  (input straight + arch half of bend)
+    - s ∈ [0.5,  1.0]:  raised-cosine taper r → r2 (drop half + output straight)
+
+    The raised cosine gives zero derivative at both taper ends, avoiding
+    any abrupt kink in the radius profile regardless of drop_shape length.
+    """
+    s = normalized_path_position(path)
+    total_length = path_arc_length(path)[-1] if len(path) else 0.0
+    if total_length <= 0:
+        return np.full(len(path), params.r, dtype=float)
+
+    radii = np.full(len(path), params.r, dtype=float)
+
+    taper_start = 0.5
+    mask = s >= taper_start
+
+    if np.any(mask) and abs(params.r2 - params.r) > 1e-20:
+        # local ∈ [0, 1] across the taper region
+        local = np.clip((s[mask] - taper_start) / (1.0 - taper_start), 0.0, 1.0)
+        # raised cosine: smooth S-curve, f(0)=0 f'(0)=0  f(1)=1 f'(1)=0
+        radii[mask] = params.r + (params.r2 - params.r) * 0.5 * (1.0 - np.cos(np.pi * local))
+
+    return radii
+
+
+def generate_pwb_structure_bend(fdtd, params, path_func=None):
+    """Build bend-only PWB structure on a clean canvas (no SMF.fsp).
+
+    path_func: callable(params) → path array.  Defaults to _3 Bezier bend.
+               Pass generate_pwb_bend_path_2 for the simple 90° arc variant.
+    """
+    if path_func is None:
+        path_func = generate_pwb_bend_path
+    path = path_func(params)
+    radii = generate_radius_profile_bend(params, path)
+    segments = centerline_to_segments(path, radii)
+
+    fdtd.deleteall()
+    fdtd.importmaterialdb(str(MATERIAL_DB))
+    add_centerline_segments(fdtd, segments)
+
+
+def setup_fdtd_bend(fdtd, params, path_func=None):
+    """Set up FDTD for bend-only simulation.
+
+    FDTD region is padded from the centreline by:
+        pad = max_radius + MARGIN + EXTRA_PAD
+
+    where max_radius = r2 (largest cross-section, at taper exit).
+    This guarantees the entire structure stays inside the simulation volume
+    with enough room for the evanescent field.
+
+    path_func: callable(params) → path array.  Defaults to _3 Bezier bend.
+    """
+    INPUT_STRAIGHT = 10e-6
+    OUTPUT_STRAIGHT = 5e-6
+
+    if path_func is None:
+        path_func = generate_pwb_bend_path
+    path = path_func(params)
+    radii = generate_radius_profile_bend(params, path)
+    max_radius = float(np.max(radii)) if len(radii) else params.r2
+
+    x_min, x_max = float(np.min(path[:, 0])), float(np.max(path[:, 0]))
+    z_min, z_max = float(np.min(path[:, 2])), float(np.max(path[:, 2]))
+
+    MARGIN = 3e-6       # evanescent field beyond structure surface
+    EXTRA_PAD = 2e-6    # clearance between monitor / structure edge and PML
+    pad = max_radius + MARGIN + EXTRA_PAD
+
+    sim_x_min = x_min - pad
+    sim_x_max = x_max + pad
+    sim_y_min = -pad
+    sim_y_max = pad
+    sim_z_min = z_min - pad
+    sim_z_max = z_max + pad
+
+    sim_x_span = sim_x_max - sim_x_min
+    sim_z_span = sim_z_max - sim_z_min
+
+    fdtd.addfdtd()
+    fdtd.set("dimension", "3D")
+    fdtd.set("express mode", True)
+    fdtd.set("x min", sim_x_min)
+    fdtd.set("x max", sim_x_max)
+    fdtd.set("y min", sim_y_min)
+    fdtd.set("y max", sim_y_max)
+    fdtd.set("z min", sim_z_min)
+    fdtd.set("z max", sim_z_max)
+    fdtd.set("x min bc", "PML")
+    fdtd.set("x max bc", "PML")
+    fdtd.set("y min bc", "PML")
+    fdtd.set("y max bc", "PML")
+    fdtd.set("z min bc", "PML")
+    fdtd.set("z max bc", "PML")
+    fdtd.set("mesh accuracy", params.mesh_accuracy)
+    fdtd.set("mesh type", "auto non-uniform")
+    fdtd.set("simulation time", params.simulation_time)
+
+    # ---- Mode source (straight input waveguide) ----
+    source_x = params.l1 - INPUT_STRAIGHT / 2
+    fdtd.addmode()
+    fdtd.set("name", "source")
+    fdtd.set("injection axis", "x-axis")
+    fdtd.set("direction", "forward")
+    fdtd.set("x", source_x)
+    fdtd.set("y", 0)
+    fdtd.set("z", 0)
+    fdtd.set("y span", 2 * pad)
+    fdtd.set("z span", 2 * pad)
+    fdtd.set("wavelength start", params.wavelength)
+    fdtd.set("wavelength stop", params.wavelength)
+
+    # ---- Transmission power monitor (straight output waveguide) ----
+    monitor_z = -params.h - OUTPUT_STRAIGHT / 2
+    fdtd.addpower()
+    fdtd.set("name", "monitor_1")
+    fdtd.set("monitor type", "2D Z-normal")
+    fdtd.set("x", params.L)
+    fdtd.set("y", 0)
+    fdtd.set("z", monitor_z)
+    fdtd.set("y span", 2 * pad)
+    fdtd.set("x span", 2 * pad)
+
+    # ---- Field profile monitor — X-Z plane at y=0 (light propagation view) ----
+    fdtd.addprofile()
+    fdtd.set("name", "field_monitor")
+    fdtd.set("monitor type", "2D Y-normal")
+    fdtd.set("x", (sim_x_min + sim_x_max) / 2)
+    fdtd.set("y", 0)
+    fdtd.set("z", (sim_z_min + sim_z_max) / 2)
+    fdtd.set("x span", sim_x_span)
+    fdtd.set("z span", sim_z_span)
+
+
+def get_data_bend(fdtd, params):
+    """Read T_total from the bend-only simulation."""
+    T_total = fdtd.getresult("monitor_1", "T")
+    return T_total["T"][0]
+
+
+def get_field_bend(fdtd, params):
+    """Read E-field from the 2D Y-normal field profile monitor.
+
+    Returns (Ex, Ey, Ez, x, z) — each E component is a 2D array [nx, nz].
+    Intensity = |Ex|² + |Ey|² + |Ez|².
+    """
+    E = fdtd.getresult("field_monitor", "E")
+    E_data = np.squeeze(E["E"])  # remove singleton y-dim: (nx, 1, nz, 3) → (nx, nz, 3)
+    Ex = E_data[:, :, 0]
+    Ey = E_data[:, :, 1]
+    Ez = E_data[:, :, 2]
+    x = np.squeeze(E["x"]) * 1e6
+    z = np.squeeze(E["z"]) * 1e6
+    return Ex, Ey, Ez, x, z

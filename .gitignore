@@ -10,8 +10,10 @@ LNOI-PWB-SMF/*fsp
 LNOI-PWB-SMF/*lsf
 LNOI-PWB-SMF/__pycache__/
 PD-PWB-SMF/results/
-PD-PWB-SMF/*fsp
-PD-PWB-SMF/*lsf
+PD-PWB-SMF/**/*.fsp
+PD-PWB-SMF/**/*.lsf
 PD-PWB-SMF/__pycache__/
-PD-PWB-SMF/*.log
+PD-PWB-SMF/**/*.log
+PD-PWB-SMF/**/temp_*/
+*.h5
 SMF-PWB-SMF/

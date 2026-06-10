@@ -1,7 +1,10 @@
+import sys
 import unittest
+from pathlib import Path
 
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from pwb_core import (
     PWBParameters,
     centerline_to_segments,

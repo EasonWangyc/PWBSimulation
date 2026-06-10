@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-sys.path.append(str(Path(__file__).resolve().parents[1]))
+sys.path.append(str(Path(__file__).resolve().parents[2]))
 from sim_config import PD_RESULTS_DIR
 from pwb_core import plot_Ttotal_loss_heatmap_rR
 
