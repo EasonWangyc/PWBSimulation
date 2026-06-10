@@ -17,6 +17,9 @@ if str(PD_DIR) not in sys.path:
     sys.path.insert(0, str(PD_DIR))
 LD_DIR = PROJECT_ROOT / "LD-PWB-SMF"
 LNOI_DIR = PROJECT_ROOT / "LNOI-PWB-SMF"
+SOA_DIR = PROJECT_ROOT / "SOA-PWB-SOA"
+SOA_RESULTS_DIR = SOA_DIR / "results"
+SOA_BASE_FSP = SOA_DIR / "SOA_base.fsp"
 
 PD_RESULTS_DIR = PD_DIR / "results"
 LD_RESULTS_DIR = LD_DIR / "results"
