@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概要
 
-PWB（光子引线键合）仿真项目，通过 Python 调用 Lumerical/Ansys FDTD API（`lumapi`）。按耦合场景分目录：`PD-PWB-SMF/`、`LD-PWB-SMF/`、`LNOI-PWB-SMF/`，每个目录有各自的 `pwb_core.py`、运行脚本和结果。详见 `AGENTS.md`。
+PWB（光子引线键合）仿真项目，通过 Python 调用 Lumerical/Ansys FDTD API（`lumapi`）。按耦合场景分目录：`PD-PWB-SMF/`、`LD-PWB-SMF/`、`LNOI-PWB-SMF/`、`SOA-PWB-SOA/`，每个目录有各自的 `pwb_core.py`、运行脚本和结果。详见 `AGENTS.md`。
 
 ## 运行环境
 
@@ -51,6 +51,10 @@ python PD-PWB-SMF\analysis\analyze_curvature.py
 & $env:PY PD-PWB-SMF\scripts\baseline_2.py
 & $env:PY PD-PWB-SMF\scripts\sweep_bend_shape.py
 & $env:PY LNOI-PWB-SMF\sweep_h1_h2_w1_w2.py
+
+# SOA-PWB-SOA（需要 Lumerical）
+& $env:PY SOA-PWB-SOA\test_setup.py
+& $env:PY SOA-PWB-SOA\run_single.py
 ```
 
 ## 架构要点
@@ -91,6 +95,16 @@ python PD-PWB-SMF\analysis\analyze_curvature.py
 
 用 `addpyramid()` 构建 taper，`addrect()` 构建直波导。参数 `h1/h2` 是半厚度（旋转 90° 后的 x span 一半），不是直接的高度值。
 
+### SOA-PWB-SOA：直波导 + 两端独立 Taper + FDE
+
+直线结构（无弯曲），光沿 +x 轴传播。五段式几何：片上 SOA 输出脊形波导（InP）→ Taper-1（模式扩展，`addpyramid()`）→ PWB 聚合物直波导（`addrect()`）→ Taper-2（模式压缩，`addpyramid()`）→ 外置 SOA 输入波导（InP）。
+
+与现有场景的关键差异：
+- **两端独立 Taper**：Taper-1 和 Taper-2 的宽度、高度、长度均独立可调，分别负责模式扩展和模式压缩
+- **FDE 模式分析**：新增 `run_fde_mode_analysis()` 函数，调用 Lumerical MODE Solutions API 计算三个截面（SOA 输出端、PWB、外置 SOA 输入端）的基模场分布
+- **模式重叠因子**：`compute_mode_overlap()` 计算两个模式之间的 η 参数，用于量化模式匹配效率
+- **无弯曲路径**：相比 LD 的 7 段弯曲中心线和 PD 的 Bezier 复杂路径，SOA 场景使用最简单的直线排布
+
 ## 开发约定
 
 - **单位**：几何参数统一用 SI（米），通常以 `数值 * 1e-6` 表示微米
@@ -99,3 +113,4 @@ python PD-PWB-SMF\analysis\analyze_curvature.py
 - **Notebook**：保留不动，可复用逻辑抽取到 `.py` 文件
 - **修改范围**：限制在用户提到的具体场景目录内，不要擅自重组目录结构
 - **FDTD 代价高**：优先做代码检查和后处理，未经明确要求不要运行完整仿真或参数扫描
+- **SOA 场景参数默认值**：当前使用占位默认值（2.0e-6/1.5e-6/4.0e-6 等），正式仿真前需替换为实际器件参数
