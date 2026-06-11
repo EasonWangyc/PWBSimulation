@@ -22,3 +22,4 @@ SOA-PWB-SOA/*.lsf
 SOA-PWB-SOA/*.log
 SOA-PWB-SOA/__pycache__/
 SMF-PWB-SMF/
+docs/superpowers/
