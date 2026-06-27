@@ -17,10 +17,13 @@ params = SOAPWBParams()
 fdtd = lumapi.FDTD()
 
 try:
-    positions = create_pwb_structure_in_fdtd(fdtd, params)
-    setup_fdtd_simulation(fdtd, params, positions)
+    path = create_pwb_structure_in_fdtd(fdtd, params)
+    setup_fdtd_simulation(fdtd, params, path)
     fdtd.save(str(SAVE_PATH))
     print("SOA-PWB-SOA structure saved:", SAVE_PATH)
-    print(f"Total structure length: {positions['total'] * 1e6:.1f} um")
+    print(f"Total PWB length: {params.total_length * 1e6:.1f} um")
+    print(f"  Taper-1: {params.taper1_length * 1e6:.1f} um")
+    print(f"  PWB straight: {(params.total_length - params.taper1_length - params.taper2_length) * 1e6:.1f} um")
+    print(f"  Taper-2: {params.taper2_length * 1e6:.1f} um")
 finally:
     fdtd.close()

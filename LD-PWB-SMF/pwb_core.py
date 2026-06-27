@@ -32,7 +32,7 @@ class PWBParameters:
         self.wavelength = 1.55e-6
         self.mesh_accuracy = 1
         self.simulation_time = 1500e-15
-        self.total_length = 170e-6
+        self.total_length = 250e-6
         self.vertical_offset = 20e-6
         self.use_imported_source = True
         self.source_dataset = LD_SOURCE_DATASET
@@ -43,7 +43,7 @@ def generate_pwb_path(params):
     r = params.r
     l1 = params.l1
     l2 = params.l2
-    l = (params.total_length - (l1 + l2)) / 2
+    l = (params.total_length - (l1 + l2) - 4 * params.vertical_offset) / 2
     if l < 0:
         raise ValueError("params.l1 + params.l2 must not exceed params.total_length")
     if params.vertical_offset > r:

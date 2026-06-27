@@ -22,10 +22,10 @@ params = SOAPWBParams()
 fdtd = lumapi.FDTD()
 
 try:
-    positions = create_pwb_structure_in_fdtd(fdtd, params)
-    setup_fdtd_simulation(fdtd, params, positions)
+    path = create_pwb_structure_in_fdtd(fdtd, params)
+    setup_fdtd_simulation(fdtd, params, path)
     fdtd.save(str(SAVE_PATH))
-    print(f"Structure saved. Total length: {positions['total'] * 1e6:.1f} um")
+    print(f"Structure saved. Total PWB length: {params.total_length * 1e6:.1f} um")
     print("Running FDTD simulation...")
     fdtd.run()
     print("Simulation complete. Extracting results...")
