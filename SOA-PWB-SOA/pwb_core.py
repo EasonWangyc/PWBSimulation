@@ -353,7 +353,7 @@ def setup_fdtd_simulation(fdtd, params, path):
     # ---- Mode expansion at several positions to track fundamental-mode
     #      transmission through each section ----
     expansion_monitors = [
-        ("mode_exp_pwb_in", mon_input),    # after taper-1
+        ("mode_exp_input", mon_input),    # after taper-1
         ("mode_exp_output", mon_output),    # after taper-2
     ]
     for name, mx in expansion_monitors:
