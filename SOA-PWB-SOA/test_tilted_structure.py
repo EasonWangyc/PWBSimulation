@@ -1,33 +1,33 @@
 """
 Test building tilted SOA waveguide geometry in FDTD.
 
-Verifies whether a tilted ridge waveguide (SOA) can be constructed and
-connected to a straight PWB.  This is a pure geometry test — no FDTD
-simulation is run; inspect the saved .fsp in the Lumerical CAD.
+Verifies that a tilted ridge waveguide (SOA) can be built in the XY plane
+and connected to a straight PWB.  Pure geometry test — no FDTD simulation
+is run; inspect the saved .fsp in the Lumerical CAD.
 
-Tilt model
-----------
-Two independent angles (both rotation around the global Y axis):
+Tilt model (top-down / XY-plane view)
+--------------------------------------
+All tilts are rotations around the global Z axis (looking from above).
 
-  theta_chip  — SOA chip body tilt relative to the PWB axis (+X)
-  theta_ridge — ridge waveguide tilt *relative to the chip body*
+  theta_chip  — SOA chip body tilt relative to +X (PWB axis)
+  theta_ridge — ridge waveguide extra tilt *relative to the chip body*
 
-The effective ridge angle w.r.t. the PWB axis is::
+Effective ridge angle:  theta_eff = theta_chip + theta_ridge
 
-    theta_eff = theta_chip + theta_ridge
+Typical values: theta_chip ≈ 7°, theta_ridge ≈ 7° → theta_eff ≈ 14°.
 
-Typical values (from literature / qa.md discussion):
-  - theta_chip  ≈ 7°   (facet anti-reflection cleave)
-  - theta_ridge ≈ 7°   (additional ridge tilt within the SOA chip)
+Geometry (looking from +Z down onto the XY plane)::
 
-The tilted SOA sections are built using Lumerical structure groups:
-each SOA's substrate, core and ridge are placed in a group at local
-coordinates, then the group is rotated and positioned so the output
-facet lands at the correct x coordinate.
+    SOA out (tilted)          PWB (straight)        SOA in (tilted)
+         /                                           /
+        / θ                                         / θ
+       /_______ … _______________________________… /
+       facet @ 0        250 um             facet @ L
 
-Output file
------------
-SOA-PWB-SOA/test_tilted_structure.fsp
+Each SOA is built as 3 independent rotated rectangles — no structure
+groups — to avoid Lumerical API selection / group-coordinate pitfalls.
+
+Output file: SOA-PWB-SOA/test_tilted_structure.fsp
 """
 
 import sys
@@ -45,120 +45,151 @@ SAVE_PATH = SOA_DIR / "test_tilted_structure.fsp"
 # =========================================================================
 # Configurable angles (degrees) — edit these to explore different tilts
 # =========================================================================
-THETA_CHIP = 7.0        # SOA chip body tilt (XZ plane, around Y)
-THETA_RIDGE = 7.0       # ridge waveguide extra tilt relative to chip body
+THETA_CHIP  = 7.0        # SOA chip body tilt (XY plane, around Z)
+THETA_RIDGE = 7.0        # ridge extra tilt relative to chip body
 
 # =========================================================================
 # SOA waveguide dimensions (metres)
 # =========================================================================
-SOA_SIM_LEN = 15e-6     # length of SOA section inside the simulation domain
-SOA_CORE_W  = 5e-6      # waveguide core width  (Y-span, before rotation)
-SOA_CORE_H  = 2e-6      # waveguide core height (Z-span, before rotation)
-SOA_RIDGE_W = 3e-6      # ridge width
-SOA_RIDGE_H = 0.2e-6    # ridge (active) height
-SOA_SUB_PAD = 2e-6      # extra substrate thickness below core
+SOA_SIM_LEN = 15e-6      # length of SOA section inside the simulation domain
+SOA_CORE_W  = 5e-6       # waveguide core width (Y-span, before rotation)
+SOA_CORE_H  = 2e-6       # waveguide core height (Z-span)
+SOA_RIDGE_W = 3e-6       # ridge width
+SOA_RIDGE_H = 0.2e-6     # ridge (active) height
+SOA_SUB_PAD = 2e-6       # extra substrate thickness below core (Z)
 
 # =========================================================================
 # Refractive indices @ 1550 nm (custom dielectrics — not in material DB)
 # =========================================================================
-N_InP      = 3.17       # InP substrate / cladding
-N_InGaAsP  = 3.40       # InGaAsP active region (approximate)
+N_InP     = 3.17         # InP substrate / cladding
+N_InGaAsP = 3.40         # InGaAsP active region (approximate)
 
 # =========================================================================
 # PWB (straight section between the two SOA facets)
 # =========================================================================
 PWB_LENGTH = 250e-6
 PWB_RADIUS = 1.1e-6
-PWB_N_SEG   = 200
+PWB_N_SEG  = 200
 
 # =========================================================================
 # Helpers
 # =========================================================================
 
-def _rot_y(theta_deg):
-    """Return (cos, sin) for a rotation around +Y by *theta_deg* degrees."""
-    th = np.deg2rad(theta_deg)
-    return np.cos(th), np.sin(th)
+def _build_tilted_soa(fdtd, theta_body_deg, theta_ridge_deg,
+                      x_facet, sign, prefix):
+    """Build ONE tilted SOA waveguide section (substrate + core + ridge).
 
-
-def _build_soa_group(fdtd, theta_deg, x_facet, sign, prefix):
-    """Build ONE tilted SOA section (substrate + core + ridge) inside a group.
+    All rotations are around the **global Z axis** (tilt in XY plane).
 
     Parameters
     ----------
     fdtd : lumapi.FDTD handle
-    theta_deg : float
-        Total effective tilt angle of this SOA section (degrees, around Y).
+    theta_body_deg : float
+        Tilt of the chip body (substrate + core) in XY plane [degrees].
+    theta_ridge_deg : float
+        Tilt of the ridge in XY plane [degrees] (typically
+        theta_body_deg + extra internal ridge tilt).
     x_facet : float
-        Global X coordinate where the SOA facet meets the PWB.
+        Global X coordinate of the facet (where SOA meets PWB).
     sign : int
-        -1 for the output SOA (waveguide extends in the **-X** direction
-        from the facet); +1 for the input SOA (extends in **+X**).
+        -1 → output side (waveguide extends in **-X** from facet).
+        +1 → input  side (waveguide extends in **+X** from facet).
     prefix : str
-        Name prefix for the group and its child structures.
+        Name prefix, e.g. ``"SOA_out"`` or ``"SOA_in"``.
     """
-    cos_th, sin_th = _rot_y(theta_deg)
+    theta_body  = np.deg2rad(theta_body_deg)
+    theta_ridge = np.deg2rad(theta_ridge_deg)
     half = SOA_SIM_LEN / 2.0
 
-    # Group centre in global coordinates — offset by half the SOA length
-    # *along the tilted axis* away from the facet.
-    gx = x_facet + sign * half * cos_th
-    gy = 0.0
-    gz = sign * half * sin_th
+    # ---- direction vectors in XY plane ----
+    # For output (sign = -1): waveguide goes -X  with a +Y tilt
+    #   direction = (-cos θ, +sin θ)
+    #   rotation  = 180° - θ   (local X axis points along direction)
+    #
+    # For input  (sign = +1): waveguide goes +X  with a +Y tilt
+    #   direction = (+cos θ, +sin θ)
+    #   rotation  = +θ
 
-    # ---- create group ----
-    fdtd.addgroup()
-    fdtd.set("name", prefix)
+    # body (substrate + core)
+    if sign < 0:
+        body_dir_x = -np.cos(theta_body)
+        body_dir_y = +np.sin(theta_body)
+        body_rot   = 180.0 - theta_body_deg
+    else:
+        body_dir_x = +np.cos(theta_body)
+        body_dir_y = +np.sin(theta_body)
+        body_rot   = theta_body_deg
 
-    # ---- substrate (InP, wider & taller than core) ----
+    body_cx = x_facet + half * body_dir_x
+    body_cy = half * body_dir_y
+
+    # ridge (may have additional internal tilt)
+    if sign < 0:
+        ridge_dir_x = -np.cos(theta_ridge)
+        ridge_dir_y = +np.sin(theta_ridge)
+        ridge_rot   = 180.0 - theta_ridge_deg
+    else:
+        ridge_dir_x = +np.cos(theta_ridge)
+        ridge_dir_y = +np.sin(theta_ridge)
+        ridge_rot   = theta_ridge_deg
+
+    ridge_cx = x_facet + half * ridge_dir_x
+    ridge_cy = half * ridge_dir_y
+
+    # ---- Z offsets (same for body & ridge — Z is rotation axis) ----
+    z_core  = SOA_SUB_PAD / 2.0
+    z_ridge = SOA_SUB_PAD / 2.0 + SOA_CORE_H / 2.0 + SOA_RIDGE_H / 2.0
+
+    # =================================================================
+    # 1. Substrate  (at body angle)
+    # =================================================================
     fdtd.addrect()
     fdtd.set("name", prefix + "_sub")
     fdtd.set("material", "<Object defined dielectric>")
     fdtd.set("index", N_InP)
-    fdtd.set("x", 0.0)
-    fdtd.set("y", 0.0)
+    fdtd.set("x", body_cx)
+    fdtd.set("y", body_cy)
     fdtd.set("z", 0.0)
     fdtd.set("x span", SOA_SIM_LEN)
     fdtd.set("y span", SOA_CORE_W + 4e-6)
     fdtd.set("z span", SOA_CORE_H + SOA_SUB_PAD)
-    fdtd.addtogroup(prefix)
+    fdtd.set("first axis", "z")
+    fdtd.set("rotation 1", body_rot)
 
-    # ---- core (InGaAsP active region) ----
+    # =================================================================
+    # 2. Core / active region  (at body angle)
+    # =================================================================
     fdtd.addrect()
     fdtd.set("name", prefix + "_core")
     fdtd.set("material", "<Object defined dielectric>")
     fdtd.set("index", N_InGaAsP)
-    fdtd.set("x", 0.0)
-    fdtd.set("y", 0.0)
-    fdtd.set("z", SOA_SUB_PAD / 2.0)
+    fdtd.set("x", body_cx)
+    fdtd.set("y", body_cy)
+    fdtd.set("z", z_core)
     fdtd.set("x span", SOA_SIM_LEN)
     fdtd.set("y span", SOA_CORE_W)
     fdtd.set("z span", SOA_CORE_H)
-    fdtd.addtogroup(prefix)
+    fdtd.set("first axis", "z")
+    fdtd.set("rotation 1", body_rot)
 
-    # ---- ridge (InP cladding on top of active region) ----
+    # =================================================================
+    # 3. Ridge  (at ridge angle, may differ from body)
+    # =================================================================
     fdtd.addrect()
     fdtd.set("name", prefix + "_ridge")
-    fdtd.set("material", "<Object defined dielectric>")
-    fdtd.set("index", N_InP)
-    fdtd.set("x", 0.0)
-    fdtd.set("y", 0.0)
-    fdtd.set("z", SOA_SUB_PAD / 2.0 + SOA_CORE_H / 2.0 + SOA_RIDGE_H / 2.0)
+    fdtd.set("material", "ridge")                # from material DB
+    fdtd.set("x", ridge_cx)
+    fdtd.set("y", ridge_cy)
+    fdtd.set("z", z_ridge)
     fdtd.set("x span", SOA_SIM_LEN)
     fdtd.set("y span", SOA_RIDGE_W)
     fdtd.set("z span", SOA_RIDGE_H)
-    fdtd.addtogroup(prefix)
-
-    # ---- position & rotate the group ----
-    fdtd.set("x", gx)
-    fdtd.set("y", gy)
-    fdtd.set("z", gz)
-    fdtd.set("first axis", "y")
-    fdtd.set("rotation 1", theta_deg)
+    fdtd.set("first axis", "z")
+    fdtd.set("rotation 1", ridge_rot)
 
 
 def _build_pwb(fdtd, x_start, x_end, radius, n_seg, material):
-    """Place straight circular segments along +X."""
+    """Place straight circular segments along +X (PWB bridge)."""
     span = x_end - x_start
     for i in range(n_seg):
         t0 = i / n_seg
@@ -186,47 +217,51 @@ def _build_pwb(fdtd, x_start, x_end, radius, n_seg, material):
 # =========================================================================
 
 def main():
-    fdtd = lumapi.FDTD(hidden=False)   # visible so user can inspect
+    fdtd = lumapi.FDTD(hidden=False)
     try:
         fdtd.deleteall()
 
-        # Import materials so "InP" / "Vancore B" etc. are resolvable
         if MATERIAL_DB.exists():
             fdtd.importmaterialdb(str(MATERIAL_DB))
 
-        # ---- optionally load the existing SOA .fsp for reference ----
-        if SOA_BASE_FSP.exists():
-            print(f"Loading reference SOA from: {SOA_BASE_FSP}")
-            # We don't load it here because we're building SOA from scratch;
-            # uncomment the line below to overlay the reference .fsp:
-            # fdtd.load(str(SOA_BASE_FSP))
+        # Effective angles
+        theta_eff = THETA_CHIP + THETA_RIDGE
 
-        # Compute effective ridge angles
-        theta_out = THETA_CHIP + THETA_RIDGE   # output SOA
-        theta_in  = THETA_CHIP + THETA_RIDGE   # input SOA (same sign → symmetric)
+        print(f"THETA_CHIP  = {THETA_CHIP}°   (body: sub + core)")
+        print(f"THETA_RIDGE = {THETA_RIDGE}°   (extra on top of chip)")
+        print(f"theta_eff   = {theta_eff}°  (ridge total)")
 
-        # ---- SOA output section (facet at x = 0, extends -X) ----
-        _build_soa_group(fdtd, theta_out, x_facet=0.0, sign=-1, prefix="SOA_out")
+        # ---- SOA output (facet at x=0, extends -X) ----
+        _build_tilted_soa(
+            fdtd,
+            theta_body_deg=THETA_CHIP,
+            theta_ridge_deg=theta_eff,
+            x_facet=0.0,
+            sign=-1,
+            prefix="SOA_out",
+        )
 
-        # ---- SOA input section (facet at x = PWB_LENGTH, extends +X) ----
-        _build_soa_group(fdtd, theta_in, x_facet=PWB_LENGTH, sign=+1, prefix="SOA_in")
+        # ---- SOA input (facet at x=PWB_LENGTH, extends +X) ----
+        _build_tilted_soa(
+            fdtd,
+            theta_body_deg=THETA_CHIP,
+            theta_ridge_deg=theta_eff,
+            x_facet=PWB_LENGTH,
+            sign=+1,
+            prefix="SOA_in",
+        )
 
-        # ---- PWB (straight, along +X) ----
+        # ---- PWB ----
         _build_pwb(fdtd, 0.0, PWB_LENGTH, PWB_RADIUS, PWB_N_SEG, "Vancore B")
 
-        # ---- save ----
         fdtd.save(str(SAVE_PATH))
-        print(f"\nStructure saved → {SAVE_PATH}")
-        print(f"  theta_chip  = {THETA_CHIP}°")
-        print(f"  theta_ridge = {THETA_RIDGE}°")
-        print(f"  theta_eff   = {theta_out}°  (output & input)")
-        print(f"  SOA sim length = {SOA_SIM_LEN * 1e6:.1f} μm per side")
-        print(f"  PWB length     = {PWB_LENGTH * 1e6:.1f} μm")
-        print(f"\nOpen the .fsp in Lumerical FDTD to inspect the geometry.")
+        print(f"\nSaved → {SAVE_PATH}")
+        print(f"SOA sim length = {SOA_SIM_LEN * 1e6:.1f} μm each side")
+        print(f"PWB length     = {PWB_LENGTH * 1e6:.1f} μm")
+        print(f"Inspect the .fsp in Lumerical FDTD (top-down view recommended).")
 
     finally:
-        # Keep open for visual inspection; close with fdtd.close() if desired
-        print("\nFDTD session still open — close manually or call fdtd.close().")
+        print("\nFDTD session open — close manually or fdtd.close().")
 
 
 if __name__ == "__main__":
