@@ -44,10 +44,10 @@ class SOAPWBParams:
         self.total_length = 250e-6         # total PWB length (tapers + straight) [m]
 
         # ---- Taper-1: SOA output → PWB (radius expansion) ----
-        self.taper1_length = 30e-6         # [m]
+        self.taper1_length = 100e-6         # [m]
 
         # ---- Taper-2: PWB → external SOA input (radius compression) ----
-        self.taper2_length = 30e-6         # [m]
+        self.taper2_length = 100e-6         # [m]
 
         # PWB straight section length is derived:
         #   pwb_length = total_length - taper1_length - taper2_length
@@ -55,18 +55,18 @@ class SOAPWBParams:
         # ---- PWB radius profile ----
         # First axis radius along the path:
         #   taper1_start (r_in) → taper1_end (r_pwb) → taper2_start → taper2_end (r_out)
-        self.r_in = 1.25e-6                 # start radius at SOA output facet [m]
-        self.r_pwb = 1.1e-6                # middle PWB section radius [m]
-        self.r_out = 1.0e-6                # end radius at external SOA input facet [m]
+        self.r_in = 1.3e-6                 # start radius at SOA output facet [m]
+        self.r_pwb = 0.9e-6                # middle PWB section radius [m]
+        self.r_out = 0.8e-6                # end radius at external SOA input facet [m]
 
         # ---- Elliptical cross-section support ----
         # If the PWB needs an elliptical cross-section, set use_ellipsoid = True
         # and provide second-axis radius values.  Otherwise the cross-section
         # is circular (radius_2 defaults to the first-axis value).
         self.use_ellipsoid = True
-        self.r_in_2 =3.0e-6               # second-axis radius at taper1 start [m]
-        self.r_pwb_2 = 1.1e-6              # second-axis radius in PWB middle [m]
-        self.r_out_2 = 2.0e-6              # second-axis radius at taper2 end [m]
+        self.r_in_2 =2.2e-6               # second-axis radius at taper1 start [m]
+        self.r_pwb_2 = 0.9e-6              # second-axis radius in PWB middle [m]
+        self.r_out_2 = 1.6e-6              # second-axis radius at taper2 end [m]
 
         # ---- Path discretisation ----
         self.curve_points = 200            # number of centreline sample points
@@ -445,23 +445,29 @@ def _plot_x_normal_monitor(ax, monitor_data, title):
 def visualize_and_save_results(fdtd, params, output_path=None):
     """Generate field visualisation figure and return T_forward.
 
-    Creates a 2×3 subplot: source mode + 4 cross-section monitors
-    + transmission side view.
+    Layout (height ratio 1:3):
+      Row 1 — Source Mode | Input | Output    (3 cross-section monitors)
+      Row 2 — Field Propagation (X-Z)          (spans full width)
     """
+    from matplotlib.gridspec import GridSpec
+
     results = get_data(fdtd, params)
 
     plt.rcParams["font.family"] = "Times New Roman"
     plt.rcParams["xtick.labelsize"] = 12
     plt.rcParams["ytick.labelsize"] = 12
 
-    fig, axes = plt.subplots(2, 3, figsize=(18, 12))
-    (ax_src, ax_in, ax_pwb_in), (ax_pwb_out, ax_out, ax_trans) = axes
+    fig = plt.figure(figsize=(18, 8))
+    gs = GridSpec(2, 3, figure=fig, height_ratios=[1, 3])
+
+    ax_src   = fig.add_subplot(gs[0, 0])
+    ax_in    = fig.add_subplot(gs[0, 1])
+    ax_out   = fig.add_subplot(gs[0, 2])
+    ax_trans = fig.add_subplot(gs[1, :])   # span all three columns
 
     _plot_x_normal_monitor(ax_src, results["source_E"], "Source Mode")
-    _plot_x_normal_monitor(ax_in, results["input_E"], "Input (SOA facet / Taper-1 start)")
-    _plot_x_normal_monitor(ax_pwb_in, results["pwb_in_E"], "PWB In (Taper-1 end)")
-    _plot_x_normal_monitor(ax_pwb_out, results["pwb_out_E"], "PWB Out (Taper-2 start)")
-    _plot_x_normal_monitor(ax_out, results["output_E"], "Output (Taper-2 end)")
+    _plot_x_normal_monitor(ax_in,  results["input_E"],  "Input")
+    _plot_x_normal_monitor(ax_out, results["output_E"], "Output")
 
     # Transmission monitor (side view: X-Z plane, Y=0)
     trans_e = results["transmission_E"]
