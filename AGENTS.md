@@ -9,9 +9,9 @@
 - `PD-PWB-SMF/`：当前脚本化程度最高的目录。包含可复用 Python 代码 `pwb_core.py`、单次运行脚本、参数扫描脚本、`.fsp` 工程文件、notebook 和已生成结果。
 - `LD-PWB-SMF/`：LD 到 PWB 到 SMF 的仿真资源，包含 notebook、`.fsp` 工程、LSF 脚本片段和扫描结果。
 - `LNOI-PWB-SMF/`：LNOI 到 PWB 到 SMF 的仿真资源，以及参数扫描图片和 CSV 结果。
-- `SOA-PWB-SOA/`：片上 SOA 输出端 → PWB → 外置 SOA 输入端的耦合仿真。直线结构（无弯曲），包含两端独立 Taper（Taper-1 模式扩展 + Taper-2 模式压缩）和 FDE 模式分析。
+- `SOA-PWB-SOA/`：片上 SOA 输出端 → PWB → 外置 SOA 输入端的耦合仿真。直线结构（无弯曲），包含两端独立 Taper、隔离扫描策略（小 FDTD 窗口逐 taper 测试）、FDE 模式分析。基座文件为 `SOA_base_with_ar&cladding.fsp`。
 - `SMF-PWB-SMF/`：SMF 到 PWB 到 SMF 的仿真工程和导出结果。
-- `notebooks/`：`data analysis.ipynb` 和 `results_analysis.ipynb`，用于数据分析和绘图。
+- `notebooks/`：按功能拆分为 `01-field-plots.ipynb`（光场剖面）、`02-parameter-sweeps.ipynb`（1D 扫描）、`03-2d-sweeps.ipynb`（2D 扫描）、`04-optimization.ipynb`（优化历史）。原始 `data analysis.ipynb` 和 `results_analysis.ipynb` 保留为存档。
 - `config/`：包含 `sim_config.py` 和 `database.mdf` 材料库。
 
 大型二进制文件和生成结果是研究流程的一部分：
@@ -93,6 +93,9 @@ D:/Desktop/WYC files/PWBSimulation
 - `test_setup.py`：只生成并保存 SOA-PWB-SOA 结构，不运行 FDTD。
 - `run_single.py`：生成结构、运行一次 FDTD 仿真并绘图。
 - `parameter.md`：说明 SOA-PWB-SOA 的几何、材料和仿真参数。
+  - `sweep_taper_width.py`：2D 网格扫描 taper 截面（r_in × r_in_2, r_out × r_out_2），隔离式小窗口 FDTD，输出 CSV。
+  - `sweep_taper_length.py`：1D 扫描 taper 长度（10–100 μm），mode expansion 在 taper 结束处直读 T_forward/T_backward，输出 CSV。
+  - `plot_sweep_results.py`：纯数据分析脚本（无需 Lumerical），读取 sweep CSV 生成 6 面板汇总图。
 
 ## 开发约定
 
@@ -131,3 +134,6 @@ SOA 验证入口：
 
 - SOA 只构建结构：`python SOA-PWB-SOA/test_setup.py`
 - SOA 单次仿真：`python SOA-PWB-SOA/run_single.py`
+- SOA 宽度扫描：`python SOA-PWB-SOA/sweep_taper_width.py`
+- SOA 长度扫描：`python SOA-PWB-SOA/sweep_taper_length.py`
+- SOA 结果绘图：`python SOA-PWB-SOA/plot_sweep_results.py`

@@ -55,6 +55,11 @@ python PD-PWB-SMF\analysis\analyze_curvature.py
 # SOA-PWB-SOA（需要 Lumerical）
 & $env:PY SOA-PWB-SOA\test_setup.py
 & $env:PY SOA-PWB-SOA\run_single.py
+& $env:PY SOA-PWB-SOA\sweep_taper_width.py
+& $env:PY SOA-PWB-SOA\sweep_taper_length.py
+
+# 纯数据分析（不需要 Lumerical）
+& $env:PY SOA-PWB-SOA\plot_sweep_results.py
 ```
 
 ## 架构要点
@@ -95,22 +100,25 @@ python PD-PWB-SMF\analysis\analyze_curvature.py
 
 用 `addpyramid()` 构建 taper，`addrect()` 构建直波导。参数 `h1/h2` 是半厚度（旋转 90° 后的 x span 一半），不是直接的高度值。
 
-### SOA-PWB-SOA：直波导 + 两端独立 Taper + FDE
+### SOA-PWB-SOA：直波导 + 两端独立 Taper + 隔离扫描
 
-直线结构（无弯曲），光沿 +x 轴传播。五段式几何：片上 SOA 输出脊形波导（InP）→ Taper-1（模式扩展，`addpyramid()`）→ PWB 聚合物直波导（`addrect()`）→ Taper-2（模式压缩，`addpyramid()`）→ 外置 SOA 输入波导（InP）。
+直线结构（无弯曲），光沿 +x 轴传播。五段式几何：片上 SOA 输出脊形波导（InP，由 `SOA_base_with_ar&cladding.fsp` 定义）→ Taper-1（模式扩展，`addcircle()`）→ PWB 聚合物直波导（`addcircle()`）→ Taper-2（模式压缩，`addcircle()`）→ 外置 SOA 输入波导（InP）。
 
 与现有场景的关键差异：
-- **两端独立 Taper**：Taper-1 和 Taper-2 的宽度、高度、长度均独立可调，分别负责模式扩展和模式压缩
-- **FDE 模式分析**：新增 `run_fde_mode_analysis()` 函数，调用 Lumerical MODE Solutions API 计算三个截面（SOA 输出端、PWB、外置 SOA 输入端）的基模场分布
-- **模式重叠因子**：`compute_mode_overlap()` 计算两个模式之间的 η 参数，用于量化模式匹配效率
-- **无弯曲路径**：相比 LD 的 7 段弯曲中心线和 PD 的 Bezier 复杂路径，SOA 场景使用最简单的直线排布
+- **两端独立 Taper**：Taper-1 和 Taper-2 的宽度（r_in/r_out）、高度（r_in_2/r_out_2）、长度均独立可调
+- **隔离扫描策略**：为提高效率，`sweep_taper_width.py` 和 `sweep_taper_length.py` 将 FDTD 区域缩至极小窗口（~20–120 μm），每次只测试单个 taper，mode expansion 直读 T_forward（或 backward 时 T_backward）
+- **宽度扫描**：2D 网格扫描 r_in × r_in_2 和 r_out × r_out_2，PWB stub 仅 5 μm，monitor 距 facet 5 μm
+- **长度扫描**：固定最优截面后，1D 扫描 taper 长度（10–100 μm，步长 10），monitor 放在 taper 结束处
+- **FDE 模式分析**：`run_fde_mode_analysis()` + `compute_mode_overlap()` 辅助验证
+- **最优参数**（宽度扫描结果）：r_in=0.5, r_in_2=2.8, r_out=0.5, r_out_2=1.5 μm；r_pwb 固定 0.8 μm
+- **纯绘图脚本**：`plot_sweep_results.py` 读取 CSV 生成 6 面板汇总图（4 张 overlap + 2 张 loss），不含 Lumerical 依赖
 
 ## 开发约定
 
 - **单位**：几何参数统一用 SI（米），通常以 `数值 * 1e-6` 表示微米
 - **T_total 与 loss**：`loss = -10 * log10(abs(-1.0 * T_total))`，修改前需确认物理约定
 - **结果输出**：放到对应场景的 `results/` 子目录，图片文件名需编码扫描参数值
-- **Notebook**：保留不动，可复用逻辑抽取到 `.py` 文件
+- **Notebook**：`notebooks/` 已按功能拆分为 4 个独立文件：`01-field-plots.ipynb`（光场剖面，含 `plot_field_2d()` 和 `load_lumerical_field_2d()`）、`02-parameter-sweeps.ipynb`（1D 参数扫描）、`03-2d-sweeps.ipynb`（2D 热图/等高线/3D）、`04-optimization.ipynb`（贝叶斯优化历史）。原始 `data analysis.ipynb` 和 `results_analysis.ipynb` 保留作为参考
 - **修改范围**：限制在用户提到的具体场景目录内，不要擅自重组目录结构
 - **FDTD 代价高**：优先做代码检查和后处理，未经明确要求不要运行完整仿真或参数扫描
 - **SOA 场景参数默认值**：当前使用占位默认值（2.0e-6/1.5e-6/4.0e-6 等），正式仿真前需替换为实际器件参数
