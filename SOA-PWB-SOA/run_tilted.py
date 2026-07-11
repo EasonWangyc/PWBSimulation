@@ -328,13 +328,16 @@ def setup_fdtd_tilted(fdtd, params, path, overhang=PWB_OVERHANG):
         fdtd.set("y span", 2.0 * (margin_yz + margin_y_tilt))
         fdtd.set("z span", 2.0 * margin_yz)
 
-    # ---- Y-normal transmission monitor (side view) ----
-    fdtd.addpower()
+    # ---- Y-normal field profile monitor (side view: X-Z plane) ----
+    # Use addprofile (not addpower) so E fields are always recorded for
+    # visualisation.  addpower on a full-domain 2D monitor may skip E to
+    # save memory, storing only the integrated T.
+    fdtd.addprofile()
     fdtd.set("name", "transmission_monitor")
     fdtd.set("monitor type", "2D Y-normal")
     fdtd.set("y", 0.0)
-    fdtd.set("x min", x_min)
-    fdtd.set("x max", x_max)
+    fdtd.set("x", (x_min + x_max) * 0.5)
+    fdtd.set("x span", x_max - x_min)
     fdtd.set("z", 0.0)
     fdtd.set("z span", 2.0 * margin_yz)
 

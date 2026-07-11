@@ -38,7 +38,7 @@ class SOAPWBParams:
         # ---- Wavelength & simulation ----
         self.wavelength = 1.55e-6          # center wavelength [m]
         self.mesh_accuracy =1
-        self.simulation_time = 2000e-15    # [s]
+        self.simulation_time = 4000e-15    # [s]
 
         # ---- Total PWB length constraint ----
         self.total_length = 250e-6         # total PWB length (tapers + straight) [m]
@@ -55,18 +55,18 @@ class SOAPWBParams:
         # ---- PWB radius profile ----
         # First axis radius along the path:
         #   taper1_start (r_in) → taper1_end (r_pwb) → taper2_start → taper2_end (r_out)
-        self.r_in = 1.3e-6                 # start radius at SOA output facet [m]
-        self.r_pwb = 0.9e-6                # middle PWB section radius [m]
-        self.r_out = 0.8e-6                # end radius at external SOA input facet [m]
+        self.r_in = 0.5e-6                 # start radius at SOA output facet [m]
+        self.r_pwb = 0.8e-6                # middle PWB section radius [m]
+        self.r_out = 0.5e-6                # end radius at external SOA input facet [m]
 
         # ---- Elliptical cross-section support ----
         # If the PWB needs an elliptical cross-section, set use_ellipsoid = True
         # and provide second-axis radius values.  Otherwise the cross-section
         # is circular (radius_2 defaults to the first-axis value).
         self.use_ellipsoid = True
-        self.r_in_2 =2.2e-6               # second-axis radius at taper1 start [m]
-        self.r_pwb_2 = 0.9e-6              # second-axis radius in PWB middle [m]
-        self.r_out_2 = 1.6e-6              # second-axis radius at taper2 end [m]
+        self.r_in_2 =2.6e-6               # second-axis radius at taper1 start [m]
+        self.r_pwb_2 = 0.8e-6              # second-axis radius in PWB middle [m]
+        self.r_out_2 = 1.5e-6              # second-axis radius at taper2 end [m]
 
         # ---- Path discretisation ----
         self.curve_points = 200            # number of centreline sample points
@@ -277,7 +277,7 @@ def setup_fdtd_simulation(fdtd, params, path):
     # ---- Lateral margin ----
     max_radius = max(params.r_pwb, params.r_in, params.r_out,
                      params.r_in_2, params.r_pwb_2, params.r_out_2)
-    margin = max_radius  + 2e-6  # extra margin for PML and field decay
+    margin = max_radius  + 1e-6  # extra margin for PML and field decay
 
     # FDTD region: include a short SOA waveguide lead-in (from .fsp) before
     # the PWB taper starts at x=0, so the mode source can be placed inside
@@ -368,7 +368,7 @@ def setup_fdtd_simulation(fdtd, params, path):
         fdtd.set("z span", 2 * margin)
 
     # ---- Y-normal transmission monitor (side view for field propagation) ----
-    fdtd.addpower()
+    fdtd.addprofile()
     fdtd.set("name", "transmission_monitor")
     fdtd.set("monitor type", "2D Y-normal")
     fdtd.set("y", 0)
@@ -389,11 +389,18 @@ def get_data(fdtd, params):
         dict with keys: source_E, transmission_E, monitors dict, T_forward.
     """
     source_E = fdtd.getresult("source", "mode profile")
-    transmission_E = fdtd.getresult("transmission_monitor", "E")
-    input_E = fdtd.getresult("input_monitor", "E")
-    pwb_in_E = fdtd.getresult("pwb_in_monitor", "E")
-    pwb_out_E = fdtd.getresult("pwb_out_monitor", "E")
-    output_E = fdtd.getresult("output_monitor", "E")
+
+    def _safe_getresult(monitor_name, attribute):
+        try:
+            return fdtd.getresult(monitor_name, attribute)
+        except Exception:
+            return None
+
+    transmission_E = _safe_getresult("transmission_monitor", "E")
+    input_E        = _safe_getresult("input_monitor", "E")
+    pwb_in_E       = _safe_getresult("pwb_in_monitor", "E")
+    pwb_out_E      = _safe_getresult("pwb_out_monitor", "E")
+    output_E       = _safe_getresult("output_monitor", "E")
 
     # T_forward after taper-2 (overall transmission into fundamental mode)
     try:
@@ -442,11 +449,11 @@ def _plot_x_normal_monitor(ax, monitor_data, title):
     ax.set_title(title)
 
 
-def visualize_and_save_results(fdtd, params, output_path=None):
+def visualize_and_save_results(fdtd, params, output_path=None, show_figure=True):
     """Generate field visualisation figure and return T_forward.
 
-    Layout (height ratio 1:3):
-      Row 1 — Source Mode | Input | Output    (3 cross-section monitors)
+    Layout (height ratio 1:4):
+      Row 1 — Source Mode | Input | Output    (3 cross-section monitors, 1:1 aspect)
       Row 2 — Field Propagation (X-Z)          (spans full width)
     """
     from matplotlib.gridspec import GridSpec
@@ -457,8 +464,8 @@ def visualize_and_save_results(fdtd, params, output_path=None):
     plt.rcParams["xtick.labelsize"] = 12
     plt.rcParams["ytick.labelsize"] = 12
 
-    fig = plt.figure(figsize=(18, 8))
-    gs = GridSpec(2, 3, figure=fig, height_ratios=[1, 3])
+    fig = plt.figure(figsize=(18, 10))
+    gs = GridSpec(2, 3, figure=fig, height_ratios=[1, 4])
 
     ax_src   = fig.add_subplot(gs[0, 0])
     ax_in    = fig.add_subplot(gs[0, 1])
@@ -469,21 +476,31 @@ def visualize_and_save_results(fdtd, params, output_path=None):
     _plot_x_normal_monitor(ax_in,  results["input_E"],  "Input")
     _plot_x_normal_monitor(ax_out, results["output_E"], "Output")
 
-    # Transmission monitor (side view: X-Z plane, Y=0)
-    trans_e = results["transmission_E"]
-    e_field = trans_e["E"]
-    ex = e_field[:, 0, :, 0, 0]
-    ey = e_field[:, 0, :, 0, 1]
-    ez = e_field[:, 0, :, 0, 2]
-    intensity = np.abs(ex) ** 2 + np.abs(ey) ** 2 + np.abs(ez) ** 2
+    # Make top-row subplots square (1:1 Y/Z aspect ratio)
+    for ax in (ax_src, ax_in, ax_out):
+        ax.set_aspect("equal")
 
-    x = np.squeeze(trans_e["x"]) * 1e6
-    z = np.squeeze(trans_e["z"]) * 1e6
-    x_grid, z_grid = np.meshgrid(x, z, indexing="ij")
-    ax_trans.pcolormesh(x_grid, z_grid, intensity, cmap="jet", shading="auto")
-    ax_trans.set_xlabel("X (um)")
-    ax_trans.set_ylabel("Z (um)")
-    ax_trans.set_title("Field Propagation (X-Z)")
+    # Transmission side view — may be unavailable (power monitors skip E)
+    trans_e = results.get("transmission_E")
+    if trans_e is not None and "E" in trans_e:
+        e_field = trans_e["E"]
+        ex = e_field[:, 0, :, 0, 0]
+        ey = e_field[:, 0, :, 0, 1]
+        ez = e_field[:, 0, :, 0, 2]
+        intensity = np.abs(ex) ** 2 + np.abs(ey) ** 2 + np.abs(ez) ** 2
+
+        x = np.squeeze(trans_e["x"]) * 1e6
+        z = np.squeeze(trans_e["z"]) * 1e6
+        x_grid, z_grid = np.meshgrid(x, z, indexing="ij")
+        ax_trans.pcolormesh(x_grid, z_grid, intensity, cmap="jet", shading="auto")
+        ax_trans.set_xlabel("X (um)")
+        ax_trans.set_ylabel("Z (um)")
+        ax_trans.set_title("Field Propagation (X-Z)")
+    else:
+        ax_trans.text(0.5, 0.5, "(field propagation data unavailable)",
+                      ha="center", va="center", transform=ax_trans.transAxes,
+                      fontsize=12, color="grey")
+        ax_trans.set_title("Field Propagation (X-Z) — N/A")
 
     plt.suptitle("SOA-PWB-SOA Field Distribution", fontsize=14)
     plt.tight_layout()
@@ -492,7 +509,11 @@ def visualize_and_save_results(fdtd, params, output_path=None):
         PICTURES_DIR.mkdir(parents=True, exist_ok=True)
         output_path = PICTURES_DIR / "single_run.png"
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
-    plt.show()
+
+    if show_figure:
+        plt.show()
+    else:
+        plt.close(fig)
 
     return results["T_forward"]
 

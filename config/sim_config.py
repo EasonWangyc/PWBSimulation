@@ -19,7 +19,7 @@ LD_DIR = PROJECT_ROOT / "LD-PWB-SMF"
 LNOI_DIR = PROJECT_ROOT / "LNOI-PWB-SMF"
 SOA_DIR = PROJECT_ROOT / "SOA-PWB-SOA"
 SOA_RESULTS_DIR = SOA_DIR / "results"
-SOA_BASE_FSP = SOA_DIR / "SOA_base.fsp"
+SOA_BASE_FSP = SOA_DIR / "SOA_base_with_ar&cladding.fsp"
 SOA_TILTED_FSP = SOA_DIR / "SOA_tilted.fsp"
 
 PD_RESULTS_DIR = PD_DIR / "results"
